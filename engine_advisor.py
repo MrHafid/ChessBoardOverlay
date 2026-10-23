@@ -1,11 +1,13 @@
+import os
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import chess
 import chess.engine
 
-from project_paths import NAUTILUS_DIRECTORY
+from project_paths import BUNDLED_ENGINE_DIRECTORY, NAUTILUS_DIRECTORY
 
 MAXIMUM_LINE_PLIES = 6
 
@@ -26,16 +28,25 @@ class Advice:
     game_over_text: str = ""
 
 
+ENGINE_FILE_NAME = "stockfish.exe" if sys.platform == "win32" else "stockfish"
+NAUTILUS_ENGINE_BY_PLATFORM = {
+    "darwin": NAUTILUS_DIRECTORY / "engines" / "darwin" / "komodo-13.02-64-osx",
+    "linux": NAUTILUS_DIRECTORY / "engines" / "linux" / "komodo-13.02-linux",
+}
+
+
 def find_engine_path() -> str | None:
     candidates = [
+        BUNDLED_ENGINE_DIRECTORY / ENGINE_FILE_NAME,
         shutil.which("stockfish"),
         "/opt/homebrew/bin/stockfish",
         "/usr/local/bin/stockfish",
-        str(NAUTILUS_DIRECTORY / "engines" / "darwin" / "komodo-13.02-64-osx"),
+        "/usr/games/stockfish",
+        NAUTILUS_ENGINE_BY_PLATFORM.get(sys.platform),
     ]
     for candidate in candidates:
-        if candidate and Path(candidate).is_file():
-            return candidate
+        if candidate and Path(candidate).is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
     return None
 
 

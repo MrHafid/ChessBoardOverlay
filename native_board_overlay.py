@@ -1,46 +1,27 @@
-import math
-from dataclasses import dataclass
-
 import AppKit
 import objc
 from Foundation import NSMakePoint, NSMakeRect
 
 from board_reader import FILES, square_cell
+from overlay_shapes import (
+    DETECTED_SQUARE_COLOR,
+    GRID_COLOR,
+    LOCKED_BORDER_COLOR,
+    RESIZE_GRIP_SIZE,
+    BoardGeometry,
+    OverlayArrow,
+    OverlayState,
+    clamp_board_size,
+    hollow_arrow_shape,
+)
 
-RESIZE_GRIP_SIZE = 22
-MINIMUM_BOARD_SIZE = 240
-MAXIMUM_BOARD_SIZE = 1400
-GRID_COLOR = "#00c8ff"
-LOCKED_BORDER_COLOR = "#5a6270"
-DETECTED_SQUARE_COLOR = "#ff3df0"
 ADJUST_MODE_TINT_ALPHA = 0.12
 OVERLAY_WINDOW_LEVEL = AppKit.NSStatusWindowLevel
-
-BoardGeometry = tuple[int, int, int]
-
-
-@dataclass(frozen=True)
-class OverlayArrow:
-    from_square: str
-    to_square: str
-    color: str
-
-
-@dataclass(frozen=True)
-class OverlayState:
-    is_locked: bool = False
-    white_at_bottom: bool = True
-    highlighted_squares: tuple[str, ...] | None = None
-    arrow: OverlayArrow | None = None
 
 
 def ns_color(hex_color: str, alpha: float = 1.0) -> AppKit.NSColor:
     red, green, blue = (int(hex_color[index:index + 2], 16) / 255 for index in (1, 3, 5))
     return AppKit.NSColor.colorWithSRGBRed_green_blue_alpha_(red, green, blue, alpha)
-
-
-def clamp_board_size(board_size: float) -> int:
-    return max(MINIMUM_BOARD_SIZE, min(MAXIMUM_BOARD_SIZE, int(board_size)))
 
 
 def main_screen_height() -> float:
@@ -56,47 +37,24 @@ def keep_window_floating(window_title: str) -> bool:
     return False
 
 
-def square_center(square: str, white_at_bottom: bool, cell_size: float) -> tuple[float, float]:
-    column, row = square_cell(square, white_at_bottom)
-    return (column + 0.5) * cell_size, (row + 0.5) * cell_size
-
-
 def stroke_hollow_arrow(arrow: OverlayArrow, white_at_bottom: bool, cell_size: float) -> None:
-    start_x, start_y = square_center(arrow.from_square, white_at_bottom, cell_size)
-    end_x, end_y = square_center(arrow.to_square, white_at_bottom, cell_size)
-    length = math.hypot(end_x - start_x, end_y - start_y)
-    if length == 0:
+    shape = hollow_arrow_shape(arrow, white_at_bottom, cell_size)
+    if shape is None:
         return
-    unit_x, unit_y = (end_x - start_x) / length, (end_y - start_y) / length
-    normal_x, normal_y = -unit_y, unit_x
-    shaft_half_width = cell_size * 0.09
-    head_half_width = cell_size * 0.24
-    head_length = min(cell_size * 0.45, length * 0.6)
-    shaft_end_x, shaft_end_y = end_x - unit_x * head_length, end_y - unit_y * head_length
-    outline_points = [
-        (start_x + normal_x * shaft_half_width, start_y + normal_y * shaft_half_width),
-        (shaft_end_x + normal_x * shaft_half_width, shaft_end_y + normal_y * shaft_half_width),
-        (shaft_end_x + normal_x * head_half_width, shaft_end_y + normal_y * head_half_width),
-        (end_x, end_y),
-        (shaft_end_x - normal_x * head_half_width, shaft_end_y - normal_y * head_half_width),
-        (shaft_end_x - normal_x * shaft_half_width, shaft_end_y - normal_y * shaft_half_width),
-        (start_x - normal_x * shaft_half_width, start_y - normal_y * shaft_half_width),
-    ]
-    line_width = max(2.0, cell_size * 0.05)
     ns_color(arrow.color).setStroke()
     arrow_path = AppKit.NSBezierPath.bezierPath()
-    arrow_path.moveToPoint_(NSMakePoint(*outline_points[0]))
-    for point in outline_points[1:]:
+    arrow_path.moveToPoint_(NSMakePoint(*shape.outline_points[0]))
+    for point in shape.outline_points[1:]:
         arrow_path.lineToPoint_(NSMakePoint(*point))
     arrow_path.closePath()
-    arrow_path.setLineWidth_(line_width)
+    arrow_path.setLineWidth_(shape.line_width)
     arrow_path.setLineJoinStyle_(AppKit.NSLineJoinStyleRound)
     arrow_path.stroke()
-    circle_radius = cell_size * 0.36
+    center_x, center_y = shape.circle_center
     circle_path = AppKit.NSBezierPath.bezierPathWithOvalInRect_(
-        NSMakeRect(start_x - circle_radius, start_y - circle_radius, circle_radius * 2, circle_radius * 2)
+        NSMakeRect(center_x - shape.circle_radius, center_y - shape.circle_radius, shape.circle_radius * 2, shape.circle_radius * 2)
     )
-    circle_path.setLineWidth_(line_width)
+    circle_path.setLineWidth_(shape.line_width)
     circle_path.stroke()
 
 
@@ -179,7 +137,7 @@ class BoardOverlayView(AppKit.NSView):
 
 
 class NativeBoardOverlay:
-    def __init__(self, left: int, top: int, board_size: int) -> None:
+    def __init__(self, root, left: int, top: int, board_size: int) -> None:
         self.drag_start: tuple[float, float, AppKit.NSRect, bool] | None = None
         self.pending_geometry: BoardGeometry | None = None
         self.pending_geometry_is_final = False

@@ -1,3 +1,5 @@
+import sys
+
 from PIL import Image, ImageGrab
 
 from site_profiles import RgbColor, SiteProfile
@@ -12,7 +14,7 @@ BoardRect = tuple[int, int, int]
 
 def capture_board(board_rect: BoardRect) -> Image.Image:
     left, top, size = board_rect
-    return ImageGrab.grab(bbox=(left, top, left + size, top + size)).convert("RGB")
+    return ImageGrab.grab(bbox=(left, top, left + size, top + size), all_screens=sys.platform == "win32").convert("RGB")
 
 
 def color_matches(pixel: RgbColor, colors: tuple[RgbColor, ...], tolerance: int) -> bool:

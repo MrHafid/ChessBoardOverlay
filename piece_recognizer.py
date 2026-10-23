@@ -7,7 +7,7 @@ import chess
 from PIL import Image, ImageFilter
 
 from board_reader import square_name
-from project_paths import PROJECT_DIRECTORY
+from project_paths import PIECE_TEMPLATES_FILE
 from square_change_detector import (
     BACKGROUND_RING_INSET,
     FOREGROUND_PIXEL_THRESHOLD,
@@ -18,7 +18,6 @@ from square_change_detector import (
     occupied_square_indices,
 )
 
-PIECE_TEMPLATES_FILE = PROJECT_DIRECTORY / "piece_templates.json"
 BACKGROUND_FEATURE_VALUE = -1
 START_POSITION_ROWS = {0, 1, 6, 7}
 EDGE_SAMPLES_PER_SQUARE_SIDE = 32

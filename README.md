@@ -23,7 +23,7 @@ Program tidak pernah mengklik atau menjalankan bidak. Semua langkah tetap kamu y
 
 | Kebutuhan | Keterangan |
 |---|---|
-| macOS | Overlay memakai AppKit (lihat [Dukungan platform](#dukungan-platform)) |
+| macOS, Windows 10/11, atau Linux X11 | Lihat [Dukungan platform](#dukungan-platform) |
 | Python 3.15 | Dari [python.org](https://www.python.org/downloads/macos/). Tkinter sudah termasuk |
 | Stockfish | `brew install stockfish` |
 | Izin Screen Recording | System Settings › Privacy & Security › Screen Recording, untuk aplikasi yang menjalankan program (misalnya Terminal) |
@@ -112,7 +112,12 @@ Rekaman bidak dibuat dari posisi awal, karena di posisi itu letak setiap bidak s
 |---|---|
 | `main.py` | Titik masuk program |
 | `overlay_app.py` | Panel Tkinter dan penghubung semua bagian |
+| `board_overlay_factory.py` | Memilih kotak overlay sesuai OS |
+| `overlay_shapes.py` | Status overlay dan bentuk panah, dipakai semua OS |
 | `native_board_overlay.py` | Kotak overlay macOS (AppKit): transparan, tembus klik, tidak ikut ter-capture |
+| `tk_board_overlay.py` | Kotak overlay Windows (Tk transparan) dan mode bingkai Linux |
+| `build.py` | Build aplikasi dengan PyInstaller |
+| `.github/workflows/build.yml` | Build otomatis macOS, Windows, dan Linux |
 | `advisor_worker.py` | Thread latar: capture, baca langkah, sinkron, dan analisis engine |
 | `board_reader.py` | Capture layar, pemetaan petak, dan deteksi highlight (cara Nautilus) |
 | `square_change_detector.py` | Deteksi perubahan petak dan petak terisi |
@@ -160,14 +165,55 @@ Untuk merekam ulang bidak dari awal, hapus `piece_templates.json`, lalu buka pap
 
 ## Dukungan platform
 
-| Platform | Status |
-|---|---|
-| macOS | Didukung dan sudah diuji |
-| Windows | Belum. Rencana: overlay Tk `-transparentcolor`, tembus klik lewat `WS_EX_TRANSPARENT`, dikecualikan dari capture dengan `WDA_EXCLUDEFROMCAPTURE` |
-| Linux (X11) | Belum. Rencana: dukungan terbatas, butuh compositor untuk transparansi |
-| Linux (Wayland) | Belum ada rencana. Capture layar dan overlay dibatasi oleh sistem |
+| Platform | Overlay | Status |
+|---|---|---|
+| macOS | Native AppKit: transparan, tembus klik, tidak ikut ter-capture | Didukung dan sudah diuji |
+| Windows 10/11 | Tk `-transparentcolor`: transparan, tembus klik (`WS_EX_TRANSPARENT`), tidak ikut ter-capture (`WDA_EXCLUDEFROMCAPTURE`, Windows 10 versi 2004 ke atas) | Sudah ditulis, belum diuji di Windows |
+| Linux (X11) | Mode bingkai: garis di luar tepi papan, saran hanya di panel | Sudah ditulis, belum diuji di Linux |
+| Linux (Wayland) | Capture layar dibatasi sistem | Tidak didukung |
 
-Rencana build: PyInstaller per OS, dijalankan lewat GitHub Actions (matrix macOS, Windows, dan Linux), dengan Stockfish disertakan per platform.
+Bagian membaca papan, pengenalan bidak, dan engine sama di semua platform. Yang berbeda hanya kotak overlay, dipilih otomatis oleh `board_overlay_factory.py`.
+
+## Build
+
+Build dibuat dengan PyInstaller dan **harus dijalankan di OS tujuan**: build Windows di Windows, build Linux di Linux.
+
+### Build lokal
+
+```bash
+pip install -r requirements-build.txt
+python build.py                      # sertakan Stockfish yang terpasang di sistem
+python build.py --download-stockfish # unduh Stockfish resmi lalu sertakan
+python build.py --without-engine     # tanpa engine
+```
+
+Hasilnya ada di folder `dist/`:
+
+| OS | Hasil |
+|---|---|
+| macOS | `ChessBoardOverlay.app` dan `ChessBoardOverlay-macos.zip` |
+| Windows | `ChessBoardOverlay\ChessBoardOverlay.exe` dan `ChessBoardOverlay-windows.zip` |
+| Linux | `ChessBoardOverlay/ChessBoardOverlay` dan `ChessBoardOverlay-linux.zip` |
+
+Profil warna situs (`pixel.txt`) dari `../NautilusChess` ikut dibundel kalau folder itu ada.
+
+### Build otomatis (GitHub Actions)
+
+`.github/workflows/build.yml` membuild ketiga OS sekaligus, dengan Stockfish resmi disertakan:
+- Jalankan manual dari tab **Actions**, lalu unduh hasilnya dari bagian *Artifacts*.
+- Push tag versi, misalnya `git tag v1.0.0 && git push origin v1.0.0`. File zip ketiga OS otomatis dilampirkan ke GitHub Release.
+
+Di GitHub Actions, folder NautilusChess tidak ikut, jadi profil warna situs tidak dibundel. Cara baca default (**Semua papan**) tidak membutuhkannya.
+
+### Catatan aplikasi hasil build
+
+- Pengaturan dan rekaman bidak disimpan di folder data pengguna:
+  - macOS: `~/Library/Application Support/ChessBoardOverlay`
+  - Windows: `%APPDATA%\ChessBoardOverlay`
+  - Linux: `~/.local/share/ChessBoardOverlay`
+- **macOS**: aplikasi belum ditandatangani. Saat pertama dibuka, klik kanan lalu pilih **Open**, atau jalankan `xattr -dr com.apple.quarantine ChessBoardOverlay.app`. Beri izin **Screen Recording** untuk ChessBoardOverlay.
+- **Windows**: SmartScreen mungkin memberi peringatan. Pilih **More info › Run anyway**.
+- Stockfish yang dibundel berlisensi GPLv3. File lisensinya ikut disertakan di folder `engines`.
 
 ## Penggunaan yang adil
 
@@ -181,4 +227,4 @@ Pakai untuk melawan komputer, di papan analisis, atau untuk belajar. Memakainya 
 
 Dirilis dengan [lisensi MIT](LICENSE). Copyright (c) 2026 Mr Hafid.
 
-Stockfish dan Komodo adalah engine terpisah dengan lisensinya masing-masing dan tidak termasuk dalam proyek ini. Stockfish berlisensi GPLv3.
+Stockfish dan Komodo adalah engine terpisah dengan lisensinya masing-masing. Kode sumber proyek ini tidak menyertakannya. Aplikasi hasil build bisa membundel Stockfish (GPLv3) beserta file lisensinya.

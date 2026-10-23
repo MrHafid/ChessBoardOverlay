@@ -5,12 +5,13 @@ import chess
 
 from advisor_worker import AdvisorWorker, ReaderSettings, WorkerUpdate
 from engine_advisor import Advice
-from native_board_overlay import NativeBoardOverlay, OverlayArrow, OverlayState, clamp_board_size, keep_window_floating
+from board_overlay_factory import create_board_overlay, keep_panel_on_top, overlay_draws_on_board
+from overlay_shapes import OverlayArrow, OverlayState, clamp_board_size
 from settings_store import load_settings, save_settings
 from site_profiles import CHANGE_DETECTION_NAME, load_site_profiles
 
 PANEL_WIDTH = 290
-PANEL_GAP = 8
+PANEL_GAP = 12
 RESIZE_STEP = 20
 THINK_TIME_CHOICES = (0.3, 0.5, 0.8, 1.2, 2.0, 3.0, 5.0)
 UPDATE_POLL_MILLISECONDS = 30
@@ -48,11 +49,11 @@ class OverlayApp:
         self.site_name_variable.trace_add("write", self.handle_site_change)
         self.build_side_panel()
 
-        self.board_overlay = NativeBoardOverlay(self.settings.x, self.settings.y, self.settings.board_size)
+        self.board_overlay = create_board_overlay(self.root, self.settings.x, self.settings.y, self.settings.board_size)
         self.handle_board_geometry_change(*self.board_overlay.geometry())
         self.refresh_board_overlay()
         self.root.update_idletasks()
-        self.root.after(200, lambda: keep_window_floating(self.root.title()))
+        self.root.after(200, lambda: keep_panel_on_top(self.root))
 
         self.update_queue: queue.Queue[WorkerUpdate] = queue.Queue()
         self.worker = AdvisorWorker(self.update_queue)
@@ -150,6 +151,8 @@ class OverlayApp:
         self.move_history_label = add_label("–", 11, TEXT_COLOR)
         self.status_label = add_label("Menyiapkan engine…", 10, MUTED_TEXT_COLOR)
         self.engine_name_label = add_label("", 10, MUTED_TEXT_COLOR)
+        if not overlay_draws_on_board():
+            add_label("Di sistem ini panah tidak digambar di atas papan, saran hanya tampil di panel", 10, MUTED_TEXT_COLOR)
 
         self.refresh_panel_controls()
 
