@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import platform
 import shutil
@@ -19,17 +20,47 @@ DIST_DIRECTORY = PROJECT_DIRECTORY / "dist"
 WORK_DIRECTORY = PROJECT_DIRECTORY / "build"
 NAUTILUS_IMAGES_DIRECTORY = PROJECT_DIRECTORY.parent / "NautilusChess" / "images"
 ENGINE_FILE_NAME = "stockfish.exe" if sys.platform == "win32" else "stockfish"
-STOCKFISH_RELEASE_URL = "https://github.com/official-stockfish/Stockfish/releases/latest/download/"
+STOCKFISH_LATEST_RELEASE_API = "https://api.github.com/repos/official-stockfish/Stockfish/releases/latest"
 STOCKFISH_LICENSE_FILE_NAMES = {"Copying.txt", "COPYING", "COPYING.txt", "AUTHORS"}
+STOCKFISH_PREFERRED_BUILDS = ("universal", "avx2", "apple-silicon", "m1")
 PLATFORM_LABELS = {"darwin": "macos", "win32": "windows", "linux": "linux"}
 
 
-def stockfish_asset_name() -> str:
+def stockfish_platform_keywords() -> tuple[str, ...]:
+    is_arm = platform.machine().lower() in ("arm64", "aarch64")
     if sys.platform == "win32":
-        return "stockfish-windows-x86-64-avx2.zip"
+        return ("windows-arm64",) if is_arm else ("windows-x86-64",)
     if sys.platform == "darwin":
-        return "stockfish-macos-m1-apple-silicon.tar" if platform.machine() == "arm64" else "stockfish-macos-x86-64-avx2.tar"
-    return "stockfish-ubuntu-x86-64-avx2.tar"
+        return ("macos",)
+    return ("linux-arm64",) if is_arm else ("linux-x86-64", "ubuntu-x86-64")
+
+
+def github_api_request(url: str) -> urllib.request.Request:
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "ChessBoardOverlay-build"}
+    if os.environ.get("GITHUB_TOKEN"):
+        headers["Authorization"] = f"Bearer {os.environ['GITHUB_TOKEN']}"
+    return urllib.request.Request(url, headers=headers)
+
+
+def find_stockfish_asset() -> tuple[str, str]:
+    with urllib.request.urlopen(github_api_request(STOCKFISH_LATEST_RELEASE_API)) as response:
+        release = json.load(response)
+    keywords = stockfish_platform_keywords()
+    matching_assets = [
+        asset
+        for asset in release["assets"]
+        if any(keyword in asset["name"] for keyword in keywords) and asset["name"].endswith((".zip", ".tar", ".tar.gz"))
+    ]
+    if not matching_assets:
+        raise SystemExit(f"Tidak ada Stockfish untuk {sys.platform} di rilis {release.get('tag_name')}")
+    preferred_asset = min(
+        matching_assets,
+        key=lambda asset: next(
+            (rank for rank, build in enumerate(STOCKFISH_PREFERRED_BUILDS) if build in asset["name"]),
+            len(STOCKFISH_PREFERRED_BUILDS),
+        ),
+    )
+    return preferred_asset["name"], preferred_asset["browser_download_url"]
 
 
 def make_executable(path: Path) -> None:
@@ -46,12 +77,12 @@ def extract_archive(archive_path: Path, destination: Path) -> None:
 
 
 def download_stockfish() -> None:
-    asset_name = stockfish_asset_name()
+    asset_name, download_url = find_stockfish_asset()
     with tempfile.TemporaryDirectory() as temporary_directory:
         archive_path = Path(temporary_directory) / asset_name
         extract_directory = Path(temporary_directory) / "extracted"
         print(f"Mengunduh {asset_name}")
-        urllib.request.urlretrieve(STOCKFISH_RELEASE_URL + asset_name, archive_path)
+        urllib.request.urlretrieve(download_url, archive_path)
         extract_archive(archive_path, extract_directory)
         executable = next(
             path
