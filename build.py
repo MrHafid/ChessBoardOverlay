@@ -134,6 +134,8 @@ def pyinstaller_arguments() -> list[str]:
         "--add-data", data_argument(PROJECT_DIRECTORY / "LICENSE", "."),
         "--add-data", data_argument(PROJECT_DIRECTORY / "README.md", "."),
     ]
+    for piece_set_file in sorted((PROJECT_DIRECTORY / "piece_sets").glob("*.json")):
+        arguments += ["--add-data", data_argument(piece_set_file, "piece_sets")]
     for pixel_file in sorted(NAUTILUS_IMAGES_DIRECTORY.glob("*/pixel.txt")):
         arguments += ["--add-data", data_argument(pixel_file, f"NautilusChess/images/{pixel_file.parent.name}")]
     if ENGINE_DIRECTORY.is_dir():

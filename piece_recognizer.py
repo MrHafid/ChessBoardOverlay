@@ -7,7 +7,7 @@ import chess
 from PIL import Image, ImageFilter
 
 from board_reader import square_name
-from project_paths import PIECE_TEMPLATES_FILE
+from project_paths import BUILTIN_PIECE_SETS_DIRECTORY, PIECE_TEMPLATES_FILE
 from square_change_detector import (
     BACKGROUND_RING_INSET,
     FOREGROUND_PIXEL_THRESHOLD,
@@ -24,6 +24,10 @@ EDGE_SAMPLES_PER_SQUARE_SIDE = 32
 EDGE_IGNORED_BORDER = 3
 EDGE_POOL_CELLS = 8
 
+OWN_PIECE_SET_NAME = "Rekaman sendiri"
+OWN_PIECE_SET_PREFERENCE = 0.9
+MAXIMUM_PIECE_SET_DISTANCE = 0.07
+
 ColorFeature = tuple[int, ...]
 ShapeFeature = tuple[float, ...]
 
@@ -33,6 +37,31 @@ class PieceTemplate:
     symbol: str
     color_feature: ColorFeature
     shape_feature: ShapeFeature
+
+
+@dataclass(frozen=True)
+class PieceSet:
+    name: str
+    templates: list[PieceTemplate]
+
+    @property
+    def is_complete(self) -> bool:
+        return len({template.symbol for template in self.templates}) == 12
+
+
+def templates_from_entries(entries: list[dict]) -> list[PieceTemplate]:
+    return [PieceTemplate(entry["symbol"], tuple(entry["color_feature"]), tuple(entry["shape_feature"])) for entry in entries]
+
+
+def load_builtin_piece_sets(directory: Path = BUILTIN_PIECE_SETS_DIRECTORY) -> list[PieceSet]:
+    piece_sets = []
+    for piece_set_file in sorted(directory.glob("*.json")):
+        try:
+            stored = json.loads(piece_set_file.read_text())
+            piece_sets.append(PieceSet(stored["name"], templates_from_entries(stored["templates"])))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return [piece_set for piece_set in piece_sets if piece_set.is_complete]
 
 
 def luminance(sample: tuple[int, int, int]) -> int:
@@ -113,22 +142,24 @@ def looks_like_start_position(occupied_indices: set[int]) -> bool:
 
 
 class PieceRecognizer:
-    def __init__(self, templates_file: Path = PIECE_TEMPLATES_FILE) -> None:
+    def __init__(self, templates_file: Path = PIECE_TEMPLATES_FILE, builtin_piece_sets_directory: Path = BUILTIN_PIECE_SETS_DIRECTORY) -> None:
         self.templates_file = templates_file
         self.templates: list[PieceTemplate] = []
+        self.builtin_piece_sets = load_builtin_piece_sets(builtin_piece_sets_directory)
+        self.active_piece_set_name: str | None = None
         self.load()
 
     @property
+    def own_piece_set(self) -> PieceSet:
+        return PieceSet(OWN_PIECE_SET_NAME, self.templates)
+
+    @property
     def has_templates(self) -> bool:
-        return len({template.symbol for template in self.templates}) == 12
+        return self.own_piece_set.is_complete or bool(self.builtin_piece_sets)
 
     def load(self) -> None:
         try:
-            stored = json.loads(self.templates_file.read_text())
-            self.templates = [
-                PieceTemplate(entry["symbol"], tuple(entry["color_feature"]), tuple(entry["shape_feature"]))
-                for entry in stored
-            ]
+            self.templates = templates_from_entries(json.loads(self.templates_file.read_text()))
         except (OSError, ValueError, KeyError, TypeError):
             self.templates = []
 
@@ -159,23 +190,58 @@ class PieceRecognizer:
         self.save()
         return white_at_bottom
 
-    def classify_piece(self, color_feature: ColorFeature, shape_feature: ShapeFeature) -> chess.Piece:
-        closest_by_color = min(self.templates, key=lambda template: color_feature_distance(color_feature, template.color_feature))
+    def candidate_piece_sets(self) -> list[PieceSet]:
+        own_piece_set = [self.own_piece_set] if self.own_piece_set.is_complete else []
+        return own_piece_set + self.builtin_piece_sets
+
+    @staticmethod
+    def piece_set_distance(piece_set: PieceSet, shape_features: list[ShapeFeature], occupied_indices: set[int]) -> float:
+        if not occupied_indices:
+            return 0.0
+        return sum(
+            min(shape_feature_distance(shape_features[index], template.shape_feature) for template in piece_set.templates)
+            for index in occupied_indices
+        ) / len(occupied_indices)
+
+    def choose_piece_set(self, shape_features: list[ShapeFeature], occupied_indices: set[int]) -> PieceSet | None:
+        scored_piece_sets = [
+            (
+                self.piece_set_distance(piece_set, shape_features, occupied_indices) * (OWN_PIECE_SET_PREFERENCE if piece_set.name == OWN_PIECE_SET_NAME else 1.0),
+                piece_set,
+            )
+            for piece_set in self.candidate_piece_sets()
+        ]
+        if not scored_piece_sets:
+            return None
+        best_distance, best_piece_set = min(scored_piece_sets, key=lambda scored: scored[0])
+        if best_distance > MAXIMUM_PIECE_SET_DISTANCE:
+            return None
+        self.active_piece_set_name = best_piece_set.name
+        return best_piece_set
+
+    @staticmethod
+    def classify_piece(templates: list[PieceTemplate], color_feature: ColorFeature, shape_feature: ShapeFeature) -> chess.Piece:
+        closest_by_color = min(templates, key=lambda template: color_feature_distance(color_feature, template.color_feature))
         piece_is_white = closest_by_color.symbol.isupper()
-        same_color_templates = [template for template in self.templates if template.symbol.isupper() == piece_is_white]
+        same_color_templates = [template for template in templates if template.symbol.isupper() == piece_is_white]
         closest_by_shape = min(same_color_templates, key=lambda template: shape_feature_distance(shape_feature, template.shape_feature))
         return chess.Piece.from_symbol(closest_by_shape.symbol)
 
-    def recognize_cells(self, image: Image.Image) -> dict[int, chess.Piece]:
-        color_features = square_color_features(image)
+    def recognize_cells(self, image: Image.Image) -> dict[int, chess.Piece] | None:
+        occupied_indices = occupied_square_indices(image)
         shape_features = square_shape_features(image)
+        piece_set = self.choose_piece_set(shape_features, occupied_indices)
+        if piece_set is None:
+            return None
+        color_features = square_color_features(image)
         return {
-            index: self.classify_piece(color_features[index], shape_features[index])
-            for index in occupied_square_indices(image)
+            index: self.classify_piece(piece_set.templates, color_features[index], shape_features[index])
+            for index in occupied_indices
         }
 
-    def recognize_pieces(self, image: Image.Image, white_at_bottom: bool) -> dict[chess.Square, chess.Piece]:
-        return pieces_on_squares(self.recognize_cells(image), white_at_bottom)
+    def recognize_pieces(self, image: Image.Image, white_at_bottom: bool) -> dict[chess.Square, chess.Piece] | None:
+        cells = self.recognize_cells(image)
+        return None if cells is None else pieces_on_squares(cells, white_at_bottom)
 
 
 def pieces_on_squares(cells: dict[int, chess.Piece], white_at_bottom: bool) -> dict[chess.Square, chess.Piece]:

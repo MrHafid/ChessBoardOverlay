@@ -15,6 +15,7 @@ POLL_INTERVAL_SECONDS = 0.35
 ENGINE_LINE_COUNT = 3
 MISMATCHES_BEFORE_RESYNC = 4
 STICKY_STATUS_POLLS = 9
+UNKNOWN_PIECE_SET_STATUS = "Set bidak di layar belum dikenal: buka papan di posisi awal sekali supaya bidak terekam otomatis"
 
 
 @dataclass(frozen=True)
@@ -135,6 +136,9 @@ class AdvisorWorker(threading.Thread):
             self.pending_status = f"Gagal capture layar: {error}"
             return
         pieces, _ = self.recognize_with_orientation(image, reader_settings.white_at_bottom)
+        if pieces is None:
+            self.pending_status = UNKNOWN_PIECE_SET_STATUS
+            return
         board = board_from_pieces(pieces, white_to_move)
         if board is None:
             self.pending_status = "Posisi di layar tidak valid. Cek posisi kotak dan arah papan"
@@ -142,7 +146,7 @@ class AdvisorWorker(threading.Thread):
         self.tracker.set_position(board)
         self.change_detector.reset()
         self.analysis_needed = True
-        self.pending_status = f"Posisi dibaca dari layar, {'Putih' if white_to_move else 'Hitam'} jalan"
+        self.pending_status = f"Posisi dibaca dari layar ({self.recognizer.active_piece_set_name}), {'Putih' if white_to_move else 'Hitam'} jalan"
 
     def infer_white_to_move(self, pieces) -> bool:
         previous_board = self.tracker.board
@@ -155,6 +159,8 @@ class AdvisorWorker(threading.Thread):
 
     def recognize_with_orientation(self, image, white_at_bottom: bool):
         cells = self.recognizer.recognize_cells(image)
+        if cells is None:
+            return None, False
         inferred_white_at_bottom = infer_white_at_bottom(cells)
         if inferred_white_at_bottom is None or inferred_white_at_bottom == white_at_bottom:
             return pieces_on_squares(cells, white_at_bottom), False
@@ -166,6 +172,8 @@ class AdvisorWorker(threading.Thread):
         if not self.recognizer.has_templates:
             return None
         pieces, _ = self.recognize_with_orientation(image, white_at_bottom)
+        if pieces is None:
+            return None
         return self.apply_screen_position(pieces, signatures)
 
     def apply_screen_position(self, pieces, signatures) -> str | None:
@@ -178,7 +186,7 @@ class AdvisorWorker(threading.Thread):
         self.change_detector.accept(signatures)
         self.mismatch_streak = 0
         self.analysis_needed = True
-        self.pending_status = f"Posisi disinkronkan ulang dari layar, {'Putih' if board.turn else 'Hitam'} jalan"
+        self.pending_status = f"Posisi dibaca dari layar ({self.recognizer.active_piece_set_name}), {'Putih' if board.turn else 'Hitam'} jalan"
         return self.pending_status
 
     def reset_baseline_when_layout_changes(self, reader_settings: ReaderSettings) -> None:
@@ -225,19 +233,26 @@ class AdvisorWorker(threading.Thread):
         changed_squares = tuple(sorted(square_name(index % 8, index // 8, white_at_bottom) for index in changed_indices))
         if self.recognizer.has_templates:
             return self.read_moves_by_recognition(image, white_at_bottom, signatures, changed_squares)
+        return self.read_moves_by_occupancy(image, white_at_bottom, signatures, changed_squares)
+
+    def read_moves_by_occupancy(self, image, white_at_bottom: bool, signatures, changed_squares: tuple[str, ...]) -> tuple[str, tuple[str, ...] | None]:
         occupied_squares = frozenset(square_name(index % 8, index // 8, white_at_bottom) for index in occupied_square_indices(image))
         moves = self.tracker.apply_changed_squares(frozenset(changed_squares), occupied_squares)
         if moves is None:
-            return f"Langkah tidak cocok ({', '.join(changed_squares)}). Bidak belum terekam: mulai game baru di papan, bidak akan terekam otomatis saat posisi awal terlihat", changed_squares
+            return f"Langkah tidak cocok ({', '.join(changed_squares)}). {UNKNOWN_PIECE_SET_STATUS}", changed_squares
         return self.accept_detected_moves(moves, signatures, changed_squares)
 
     def sync_with_screen_on_first_frame(self, image, white_at_bottom: bool, signatures) -> tuple[str, tuple[str, ...] | None]:
         pieces, _ = self.recognize_with_orientation(image, white_at_bottom)
+        if pieces is None:
+            return UNKNOWN_PIECE_SET_STATUS, None
         sync_status = self.apply_screen_position(pieces, signatures)
-        return sync_status or self.pending_status or "Membaca papan, menunggu langkah", None
+        return sync_status or self.pending_status or f"Membaca papan ({self.recognizer.active_piece_set_name}), menunggu langkah", None
 
     def read_moves_by_recognition(self, image, white_at_bottom: bool, signatures, changed_squares: tuple[str, ...]) -> tuple[str, tuple[str, ...] | None]:
         pieces, orientation_was_corrected = self.recognize_with_orientation(image, white_at_bottom)
+        if pieces is None:
+            return self.read_moves_by_occupancy(image, white_at_bottom, signatures, changed_squares)
         if orientation_was_corrected:
             return self.apply_screen_position(pieces, signatures) or self.pending_status, None
         recognized_board = chess.Board(None)
