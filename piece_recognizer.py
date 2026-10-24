@@ -166,13 +166,39 @@ class PieceRecognizer:
         closest_by_shape = min(same_color_templates, key=lambda template: shape_feature_distance(shape_feature, template.shape_feature))
         return chess.Piece.from_symbol(closest_by_shape.symbol)
 
-    def recognize_pieces(self, image: Image.Image, white_at_bottom: bool) -> dict[chess.Square, chess.Piece]:
+    def recognize_cells(self, image: Image.Image) -> dict[int, chess.Piece]:
         color_features = square_color_features(image)
         shape_features = square_shape_features(image)
         return {
-            chess.parse_square(square_name(index % 8, index // 8, white_at_bottom)): self.classify_piece(color_features[index], shape_features[index])
+            index: self.classify_piece(color_features[index], shape_features[index])
             for index in occupied_square_indices(image)
         }
+
+    def recognize_pieces(self, image: Image.Image, white_at_bottom: bool) -> dict[chess.Square, chess.Piece]:
+        return pieces_on_squares(self.recognize_cells(image), white_at_bottom)
+
+
+def pieces_on_squares(cells: dict[int, chess.Piece], white_at_bottom: bool) -> dict[chess.Square, chess.Piece]:
+    return {chess.parse_square(square_name(index % 8, index // 8, white_at_bottom)): piece for index, piece in cells.items()}
+
+
+def mean_screen_row(cells: dict[int, chess.Piece], symbol: str) -> tuple[float | None, int]:
+    rows = [index // 8 for index, piece in cells.items() if piece.symbol() == symbol]
+    return (sum(rows) / len(rows) if rows else None), len(rows)
+
+
+def infer_white_at_bottom(cells: dict[int, chess.Piece]) -> bool | None:
+    white_pawn_row, white_pawn_count = mean_screen_row(cells, "P")
+    black_pawn_row, black_pawn_count = mean_screen_row(cells, "p")
+    if white_pawn_row is not None and black_pawn_row is not None:
+        row_gap = white_pawn_row - black_pawn_row
+        if (min(white_pawn_count, black_pawn_count) >= 2 and abs(row_gap) >= 1) or abs(row_gap) >= 3:
+            return row_gap > 0
+    white_king_row, _ = mean_screen_row(cells, "K")
+    black_king_row, _ = mean_screen_row(cells, "k")
+    if white_king_row is not None and black_king_row is not None and abs(white_king_row - black_king_row) >= 3:
+        return white_king_row > black_king_row
+    return None
 
 
 def board_from_pieces(pieces: dict[chess.Square, chess.Piece], white_to_move: bool) -> chess.Board | None:

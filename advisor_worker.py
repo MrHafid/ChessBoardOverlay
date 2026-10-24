@@ -7,7 +7,7 @@ import chess
 from board_reader import BoardRect, capture_board, find_highlighted_squares, square_name
 from engine_advisor import Advice, EngineAdvisor, find_engine_path
 from game_tracker import GameTracker
-from piece_recognizer import PieceRecognizer, board_from_pieces, looks_like_start_position
+from piece_recognizer import PieceRecognizer, board_from_pieces, infer_white_at_bottom, looks_like_start_position, pieces_on_squares
 from site_profiles import SiteProfile
 from square_change_detector import SquareChangeDetector, occupied_square_indices, square_signatures
 
@@ -134,7 +134,8 @@ class AdvisorWorker(threading.Thread):
         except Exception as error:
             self.pending_status = f"Gagal capture layar: {error}"
             return
-        board = board_from_pieces(self.recognizer.recognize_pieces(image, reader_settings.white_at_bottom), white_to_move)
+        pieces, _ = self.recognize_with_orientation(image, reader_settings.white_at_bottom)
+        board = board_from_pieces(pieces, white_to_move)
         if board is None:
             self.pending_status = "Posisi di layar tidak valid. Cek posisi kotak dan arah papan"
             return
@@ -152,10 +153,22 @@ class AdvisorWorker(threading.Thread):
             return True
         return previous_board.turn
 
+    def recognize_with_orientation(self, image, white_at_bottom: bool):
+        cells = self.recognizer.recognize_cells(image)
+        inferred_white_at_bottom = infer_white_at_bottom(cells)
+        if inferred_white_at_bottom is None or inferred_white_at_bottom == white_at_bottom:
+            return pieces_on_squares(cells, white_at_bottom), False
+        self.detected_white_at_bottom = inferred_white_at_bottom
+        self.pending_status = f"Arah papan dikoreksi otomatis: {'Putih' if inferred_white_at_bottom else 'Hitam'} di bawah"
+        return pieces_on_squares(cells, inferred_white_at_bottom), True
+
     def resync_from_screen(self, image, white_at_bottom: bool, signatures) -> str | None:
         if not self.recognizer.has_templates:
             return None
-        pieces = self.recognizer.recognize_pieces(image, white_at_bottom)
+        pieces, _ = self.recognize_with_orientation(image, white_at_bottom)
+        return self.apply_screen_position(pieces, signatures)
+
+    def apply_screen_position(self, pieces, signatures) -> str | None:
         board = board_from_pieces(pieces, self.infer_white_to_move(pieces))
         if board is not None and board.board_fen() == chess.STARTING_BOARD_FEN:
             board = chess.Board()
@@ -203,6 +216,9 @@ class AdvisorWorker(threading.Thread):
             if self.learned_this_session:
                 return self.pending_status, None
         signatures = square_signatures(image)
+        if self.recognizer.has_templates and self.change_detector.reference is None:
+            self.change_detector.observe(signatures)
+            return self.sync_with_screen_on_first_frame(image, white_at_bottom, signatures)
         changed_indices = self.change_detector.observe(signatures)
         if changed_indices is None:
             return "Membaca papan, menunggu langkah", None
@@ -215,8 +231,15 @@ class AdvisorWorker(threading.Thread):
             return f"Langkah tidak cocok ({', '.join(changed_squares)}). Bidak belum terekam: mulai game baru di papan, bidak akan terekam otomatis saat posisi awal terlihat", changed_squares
         return self.accept_detected_moves(moves, signatures, changed_squares)
 
+    def sync_with_screen_on_first_frame(self, image, white_at_bottom: bool, signatures) -> tuple[str, tuple[str, ...] | None]:
+        pieces, _ = self.recognize_with_orientation(image, white_at_bottom)
+        sync_status = self.apply_screen_position(pieces, signatures)
+        return sync_status or self.pending_status or "Membaca papan, menunggu langkah", None
+
     def read_moves_by_recognition(self, image, white_at_bottom: bool, signatures, changed_squares: tuple[str, ...]) -> tuple[str, tuple[str, ...] | None]:
-        pieces = self.recognizer.recognize_pieces(image, white_at_bottom)
+        pieces, orientation_was_corrected = self.recognize_with_orientation(image, white_at_bottom)
+        if orientation_was_corrected:
+            return self.apply_screen_position(pieces, signatures) or self.pending_status, None
         recognized_board = chess.Board(None)
         recognized_board.set_piece_map(pieces)
         recognized_board_fen = recognized_board.board_fen()
