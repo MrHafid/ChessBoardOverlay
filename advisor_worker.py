@@ -34,7 +34,6 @@ class WorkerUpdate:
     highlighted_squares: tuple[str, ...] | None = None
     advice: Advice | None = None
     move_history_san: str | None = None
-    engine_name: str | None = None
     detected_white_at_bottom: bool | None = None
 
 
@@ -94,7 +93,7 @@ class AdvisorWorker(threading.Thread):
         except Exception as error:
             self.update_queue.put(WorkerUpdate(status_text=f"Engine gagal dijalankan: {error}"))
             return
-        self.update_queue.put(WorkerUpdate(status_text="Engine siap", engine_name=self.advisor.engine_name))
+        self.update_queue.put(WorkerUpdate(status_text="Engine siap"))
 
     def process_pending_commands(self) -> None:
         while not self.pending_commands.empty():

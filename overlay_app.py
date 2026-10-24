@@ -150,7 +150,6 @@ class OverlayApp:
         add_label("Langkah game", 11, MUTED_TEXT_COLOR)
         self.move_history_label = add_label("–", 11, TEXT_COLOR)
         self.status_label = add_label("Menyiapkan engine…", 10, MUTED_TEXT_COLOR)
-        self.engine_name_label = add_label("", 10, MUTED_TEXT_COLOR)
         if not overlay_draws_on_board():
             add_label("Di sistem ini panah tidak digambar di atas papan, saran hanya tampil di panel", 10, MUTED_TEXT_COLOR)
 
@@ -279,8 +278,6 @@ class OverlayApp:
         needs_redraw = update.highlighted_squares != self.highlighted_squares
         self.highlighted_squares = update.highlighted_squares
         self.status_label.configure(text=update.status_text)
-        if update.engine_name:
-            self.engine_name_label.configure(text=f"Engine: {update.engine_name}")
         if update.detected_white_at_bottom is not None and update.detected_white_at_bottom != self.settings.white_at_bottom:
             self.set_white_at_bottom(update.detected_white_at_bottom)
             needs_redraw = True
