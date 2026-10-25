@@ -7,4 +7,3 @@ dist/
 engines/
 *.spec
 .DS_Store
-debug_orientation/

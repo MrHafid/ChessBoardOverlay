@@ -7,8 +7,7 @@ import chess
 from board_reader import BoardRect, capture_board, find_highlighted_squares, square_name
 from engine_advisor import Advice, EngineAdvisor, find_engine_path
 from game_tracker import GameTracker
-from orientation_debug_log import record_orientation_change
-from piece_recognizer import PieceRecognizer, board_from_pieces, infer_white_at_bottom, looks_like_start_position, orientation_votes, pieces_on_squares
+from piece_recognizer import PieceRecognizer, board_from_pieces, infer_white_at_bottom, looks_like_start_position, pieces_on_squares
 from site_profiles import SiteProfile
 from square_change_detector import SquareChangeDetector, occupied_square_indices, square_signatures
 
@@ -122,7 +121,6 @@ class AdvisorWorker(threading.Thread):
         if white_at_bottom is None:
             self.pending_status = "Bidak belum direkam: papan di layar bukan posisi awal"
             return
-        self.record_learned_orientation("Game baru ditekan, bidak direkam dari posisi awal", image, white_at_bottom)
         self.detected_white_at_bottom = white_at_bottom
         self.learned_this_session = True
         self.pending_status = f"Bidak direkam dari posisi awal, {'Putih' if white_at_bottom else 'Hitam'} di bawah"
@@ -165,30 +163,7 @@ class AdvisorWorker(threading.Thread):
         board.set_piece_map(pieces)
         return board.board_fen()
 
-    def record_learned_orientation(self, reason: str, image, learned_white_at_bottom: bool) -> None:
-        setting_before = self.current_reader_settings().white_at_bottom
-        if learned_white_at_bottom == setting_before:
-            return
-        record_orientation_change(reason, image, {
-            "setting_before": "Putih" if setting_before else "Hitam",
-            "setting_after": "Putih" if learned_white_at_bottom else "Hitam",
-            "occupied_squares": len(occupied_square_indices(image)),
-            "tracked_position": self.tracker.board.fen(),
-        })
-
-    def flip_orientation(self, white_at_bottom: bool, reason: str, image, cells) -> None:
-        record_orientation_change(reason, image, {
-            "setting_before": "Hitam" if white_at_bottom else "Putih",
-            "setting_after": "Putih" if white_at_bottom else "Hitam",
-            "screen_read_with_old_setting": self.board_fen_of(pieces_on_squares(cells, not white_at_bottom)),
-            "screen_read_with_new_setting": self.board_fen_of(pieces_on_squares(cells, white_at_bottom)),
-            "tracked_position": self.tracker.board.fen(),
-            "tracked_moves": self.tracker.move_history_san(),
-            "orientation_votes": orientation_votes(cells),
-            "piece_count": len(cells),
-            "piece_set": self.recognizer.active_piece_set_name,
-            "orientation_chosen_by_user": self.current_reader_settings().orientation_chosen_by_user,
-        })
+    def flip_orientation(self, white_at_bottom: bool) -> None:
         self.detected_white_at_bottom = white_at_bottom
         self.pending_status = f"Arah papan dikoreksi otomatis: {'Putih' if white_at_bottom else 'Hitam'} di bawah"
 
@@ -201,10 +176,10 @@ class AdvisorWorker(threading.Thread):
             return current_pieces, False
         flipped_pieces = pieces_on_squares(cells, not white_at_bottom)
         if self.tracker.is_consistent_with(self.board_fen_of(flipped_pieces)):
-            self.flip_orientation(not white_at_bottom, "Posisi terbalik cocok dengan game yang diikuti", image, cells)
+            self.flip_orientation(not white_at_bottom)
             return flipped_pieces, True
         if not self.current_reader_settings().orientation_chosen_by_user and infer_white_at_bottom(cells) == (not white_at_bottom):
-            self.flip_orientation(not white_at_bottom, "Tebakan dari letak pion dan raja", image, cells)
+            self.flip_orientation(not white_at_bottom)
             return flipped_pieces, True
         return current_pieces, False
 
@@ -250,7 +225,6 @@ class AdvisorWorker(threading.Thread):
         white_at_bottom = self.recognizer.learn_start_position(image)
         if white_at_bottom is None:
             return
-        self.record_learned_orientation("Posisi awal terlihat, bidak direkam otomatis", image, white_at_bottom)
         self.learned_this_session = True
         self.detected_white_at_bottom = white_at_bottom
         self.tracker.reset()

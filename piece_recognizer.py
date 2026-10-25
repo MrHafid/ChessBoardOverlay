@@ -282,14 +282,10 @@ def facing_pawn_votes(cells: dict[int, chess.Piece]) -> int:
     return votes
 
 
-def orientation_votes(cells: dict[int, chess.Piece]) -> int:
-    return home_row_votes(cells) + facing_pawn_votes(cells)
-
-
 def infer_white_at_bottom(cells: dict[int, chess.Piece]) -> bool | None:
     if len(cells) < MINIMUM_PIECES_FOR_ORIENTATION_GUESS:
         return None
-    votes = orientation_votes(cells)
+    votes = home_row_votes(cells) + facing_pawn_votes(cells)
     if abs(votes) < MINIMUM_ORIENTATION_VOTES:
         return None
     return votes > 0
