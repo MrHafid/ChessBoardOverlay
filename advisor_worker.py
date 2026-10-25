@@ -26,6 +26,7 @@ class ReaderSettings:
     color_tolerance: int = 12
     think_seconds: float = 0.8
     is_reading: bool = False
+    orientation_chosen_by_user: bool = False
 
 
 @dataclass(frozen=True)
@@ -177,7 +178,7 @@ class AdvisorWorker(threading.Thread):
         if self.tracker.is_consistent_with(self.board_fen_of(flipped_pieces)):
             self.flip_orientation(not white_at_bottom)
             return flipped_pieces, True
-        if infer_white_at_bottom(cells) == (not white_at_bottom):
+        if not self.current_reader_settings().orientation_chosen_by_user and infer_white_at_bottom(cells) == (not white_at_bottom):
             self.flip_orientation(not white_at_bottom)
             return flipped_pieces, True
         return current_pieces, False

@@ -35,6 +35,7 @@ class OverlayApp:
         self.settings.board_size = clamp_board_size(self.settings.board_size)
         self.is_locked = False
         self.is_reading = False
+        self.orientation_chosen_by_user = False
         self.latest_advice: Advice | None = None
         self.highlighted_squares: tuple[str, ...] | None = None
 
@@ -133,9 +134,9 @@ class OverlayApp:
 
         orientation_row = add_button_row()
         tk.Label(orientation_row, text="Bawah papan", bg=PANEL_BACKGROUND, fg=MUTED_TEXT_COLOR, font=("Helvetica", 12)).pack(side="left")
-        self.white_bottom_button = self.create_flat_button(orientation_row, "Putih", lambda: self.set_white_at_bottom(True))
+        self.white_bottom_button = self.create_flat_button(orientation_row, "Putih", lambda: self.choose_white_at_bottom(True))
         self.white_bottom_button.pack(side="left", padx=(8, 4))
-        self.black_bottom_button = self.create_flat_button(orientation_row, "Hitam", lambda: self.set_white_at_bottom(False))
+        self.black_bottom_button = self.create_flat_button(orientation_row, "Hitam", lambda: self.choose_white_at_bottom(False))
         self.black_bottom_button.pack(side="left", padx=4)
 
         think_row = add_button_row()
@@ -177,6 +178,10 @@ class OverlayApp:
         self.settings.think_seconds = THINK_TIME_CHOICES[next_index]
         self.refresh_panel_controls()
         save_settings(self.settings)
+
+    def choose_white_at_bottom(self, white_at_bottom: bool) -> None:
+        self.orientation_chosen_by_user = True
+        self.set_white_at_bottom(white_at_bottom)
 
     def set_white_at_bottom(self, white_at_bottom: bool) -> None:
         self.settings.white_at_bottom = white_at_bottom
@@ -250,6 +255,7 @@ class OverlayApp:
             color_tolerance=self.settings.color_tolerance,
             think_seconds=self.settings.think_seconds,
             is_reading=self.is_reading and self.is_locked,
+            orientation_chosen_by_user=self.orientation_chosen_by_user,
         )
 
     def show_advice(self, advice: Advice) -> None:

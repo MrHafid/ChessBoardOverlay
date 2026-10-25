@@ -27,7 +27,8 @@ EDGE_POOL_CELLS = 8
 OWN_PIECE_SET_NAME = "Rekaman sendiri"
 OWN_PIECE_SET_PREFERENCE = 0.9
 MAXIMUM_PIECE_SET_DISTANCE = 0.07
-MINIMUM_ORIENTATION_VOTES = 2
+MINIMUM_ORIENTATION_VOTES = 3
+MINIMUM_PIECES_FOR_ORIENTATION_GUESS = 20
 
 ColorFeature = tuple[int, ...]
 ShapeFeature = tuple[float, ...]
@@ -282,6 +283,8 @@ def facing_pawn_votes(cells: dict[int, chess.Piece]) -> int:
 
 
 def infer_white_at_bottom(cells: dict[int, chess.Piece]) -> bool | None:
+    if len(cells) < MINIMUM_PIECES_FOR_ORIENTATION_GUESS:
+        return None
     votes = home_row_votes(cells) + facing_pawn_votes(cells)
     if abs(votes) < MINIMUM_ORIENTATION_VOTES:
         return None
