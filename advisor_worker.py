@@ -172,7 +172,7 @@ class AdvisorWorker(threading.Thread):
         if cells is None:
             return None, False
         current_pieces = pieces_on_squares(cells, white_at_bottom)
-        if self.tracker.is_consistent_with(self.board_fen_of(current_pieces)):
+        if self.tracker.board.move_stack or self.tracker.is_consistent_with(self.board_fen_of(current_pieces)):
             return current_pieces, False
         flipped_pieces = pieces_on_squares(cells, not white_at_bottom)
         if self.tracker.is_consistent_with(self.board_fen_of(flipped_pieces)):
