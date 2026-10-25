@@ -151,6 +151,13 @@ class GameTracker:
             self.board.pop()
         return None
 
+    def is_consistent_with(self, target_board_fen: str) -> bool:
+        if target_board_fen in (self.board.board_fen(), chess.STARTING_BOARD_FEN):
+            return True
+        probe = GameTracker()
+        probe.board = self.board.copy(stack=False)
+        return probe.find_moves_reaching(target_board_fen) is not None
+
     def apply_moves(self, moves: list[chess.Move]) -> None:
         self.previous_move_squares = self.squares_changed_by(self.board, moves) | self.move_endpoint_squares(moves)
         for move in moves:

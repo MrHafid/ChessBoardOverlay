@@ -156,16 +156,31 @@ class AdvisorWorker(threading.Thread):
             return True
         return previous_board.turn
 
+    @staticmethod
+    def board_fen_of(pieces) -> str:
+        board = chess.Board(None)
+        board.set_piece_map(pieces)
+        return board.board_fen()
+
+    def flip_orientation(self, white_at_bottom: bool) -> None:
+        self.detected_white_at_bottom = white_at_bottom
+        self.pending_status = f"Arah papan dikoreksi otomatis: {'Putih' if white_at_bottom else 'Hitam'} di bawah"
+
     def recognize_with_orientation(self, image, white_at_bottom: bool):
         cells = self.recognizer.recognize_cells(image)
         if cells is None:
             return None, False
-        inferred_white_at_bottom = infer_white_at_bottom(cells)
-        if inferred_white_at_bottom is None or inferred_white_at_bottom == white_at_bottom:
-            return pieces_on_squares(cells, white_at_bottom), False
-        self.detected_white_at_bottom = inferred_white_at_bottom
-        self.pending_status = f"Arah papan dikoreksi otomatis: {'Putih' if inferred_white_at_bottom else 'Hitam'} di bawah"
-        return pieces_on_squares(cells, inferred_white_at_bottom), True
+        current_pieces = pieces_on_squares(cells, white_at_bottom)
+        if self.tracker.is_consistent_with(self.board_fen_of(current_pieces)):
+            return current_pieces, False
+        flipped_pieces = pieces_on_squares(cells, not white_at_bottom)
+        if self.tracker.is_consistent_with(self.board_fen_of(flipped_pieces)):
+            self.flip_orientation(not white_at_bottom)
+            return flipped_pieces, True
+        if infer_white_at_bottom(cells) == (not white_at_bottom):
+            self.flip_orientation(not white_at_bottom)
+            return flipped_pieces, True
+        return current_pieces, False
 
     def resync_from_screen(self, image, white_at_bottom: bool, signatures) -> str | None:
         if not self.recognizer.has_templates:

@@ -27,6 +27,7 @@ EDGE_POOL_CELLS = 8
 OWN_PIECE_SET_NAME = "Rekaman sendiri"
 OWN_PIECE_SET_PREFERENCE = 0.9
 MAXIMUM_PIECE_SET_DISTANCE = 0.07
+MINIMUM_ORIENTATION_VOTES = 2
 
 ColorFeature = tuple[int, ...]
 ShapeFeature = tuple[float, ...]
@@ -248,23 +249,43 @@ def pieces_on_squares(cells: dict[int, chess.Piece], white_at_bottom: bool) -> d
     return {chess.parse_square(square_name(index % 8, index // 8, white_at_bottom)): piece for index, piece in cells.items()}
 
 
-def mean_screen_row(cells: dict[int, chess.Piece], symbol: str) -> tuple[float | None, int]:
-    rows = [index // 8 for index, piece in cells.items() if piece.symbol() == symbol]
-    return (sum(rows) / len(rows) if rows else None), len(rows)
+def home_row_votes(cells: dict[int, chess.Piece]) -> int:
+    votes = 0
+    for index, piece in cells.items():
+        row = index // 8
+        if piece.piece_type == chess.PAWN:
+            bottom_home_row, top_home_row = 6, 1
+        elif piece.piece_type == chess.KING:
+            bottom_home_row, top_home_row = 7, 0
+        else:
+            continue
+        sign = 1 if piece.color == chess.WHITE else -1
+        if row == bottom_home_row:
+            votes += sign
+        elif row == top_home_row:
+            votes -= sign
+    return votes
+
+
+def facing_pawn_votes(cells: dict[int, chess.Piece]) -> int:
+    votes = 0
+    for column in range(8):
+        white_rows = [index // 8 for index, piece in cells.items() if index % 8 == column and piece.symbol() == "P"]
+        black_rows = [index // 8 for index, piece in cells.items() if index % 8 == column and piece.symbol() == "p"]
+        if not white_rows or not black_rows:
+            continue
+        if min(white_rows) > max(black_rows):
+            votes += 1
+        elif max(white_rows) < min(black_rows):
+            votes -= 1
+    return votes
 
 
 def infer_white_at_bottom(cells: dict[int, chess.Piece]) -> bool | None:
-    white_pawn_row, white_pawn_count = mean_screen_row(cells, "P")
-    black_pawn_row, black_pawn_count = mean_screen_row(cells, "p")
-    if white_pawn_row is not None and black_pawn_row is not None:
-        row_gap = white_pawn_row - black_pawn_row
-        if (min(white_pawn_count, black_pawn_count) >= 2 and abs(row_gap) >= 1) or abs(row_gap) >= 3:
-            return row_gap > 0
-    white_king_row, _ = mean_screen_row(cells, "K")
-    black_king_row, _ = mean_screen_row(cells, "k")
-    if white_king_row is not None and black_king_row is not None and abs(white_king_row - black_king_row) >= 3:
-        return white_king_row > black_king_row
-    return None
+    votes = home_row_votes(cells) + facing_pawn_votes(cells)
+    if abs(votes) < MINIMUM_ORIENTATION_VOTES:
+        return None
+    return votes > 0
 
 
 def board_from_pieces(pieces: dict[chess.Square, chess.Piece], white_to_move: bool) -> chess.Board | None:
