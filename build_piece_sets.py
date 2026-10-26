@@ -1,5 +1,7 @@
 import io
 import json
+import shutil
+import subprocess
 import tempfile
 import tkinter as tk
 import urllib.request
@@ -19,6 +21,16 @@ BOARD_THEMES = (
     ((222, 227, 230), (140, 162, 173)),
 )
 CHESSCOM_PIECE_URL = "https://images.chesscomfiles.com/chess-themes/pieces/{piece_set}/150/{color}{piece}.png"
+LICHESS_PIECE_URL = "https://lichess1.org/assets/piece/{piece_set}/{color}{piece}.svg"
+PIECE_SYMBOLS = "PNBRQKpnbrqk"
+SVG_RENDER_SIZE = 150
+CHROME_CANDIDATES = (
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "google-chrome",
+    "chromium",
+    "chromium-browser",
+)
 NAUTILUS_LIGHT_SQUARE = "#eed8b5"
 NAUTILUS_DARK_SQUARE = "#b58863"
 NAUTILUS_WHITE_PIECE = "#666666"
@@ -35,13 +47,60 @@ def start_position_cells() -> list[tuple[int, int, chess.Piece]]:
     ]
 
 
+def download_bytes(url: str) -> bytes:
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request) as response:
+        return response.read()
+
+
+def find_chrome() -> str:
+    for candidate in CHROME_CANDIDATES:
+        resolved = candidate if Path(candidate).is_file() else shutil.which(candidate)
+        if resolved:
+            return resolved
+    raise SystemExit("Chrome atau Chromium dibutuhkan untuk menggambar bidak SVG Lichess")
+
+
+def download_lichess_pieces(piece_set: str) -> dict[str, Image.Image]:
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        directory = Path(temporary_directory)
+        for symbol in PIECE_SYMBOLS:
+            color = "w" if symbol.isupper() else "b"
+            svg_url = LICHESS_PIECE_URL.format(piece_set=piece_set, color=color, piece=symbol.upper())
+            (directory / f"{symbol}{color}.svg").write_bytes(download_bytes(svg_url))
+        images_markup = "".join(
+            f'<img src="{symbol}{"w" if symbol.isupper() else "b"}.svg" width="{SVG_RENDER_SIZE}" height="{SVG_RENDER_SIZE}" style="display:block;float:left">'
+            for symbol in PIECE_SYMBOLS
+        )
+        (directory / "pieces.html").write_text(f'<html><body style="margin:0;background:transparent">{images_markup}</body></html>')
+        screenshot_path = directory / "pieces.png"
+        subprocess.run(
+            [
+                find_chrome(),
+                "--headless=new",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                "--default-background-color=00000000",
+                f"--window-size={SVG_RENDER_SIZE * len(PIECE_SYMBOLS)},{SVG_RENDER_SIZE}",
+                f"--screenshot={screenshot_path}",
+                (directory / "pieces.html").as_uri(),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
+        strip = Image.open(screenshot_path).convert("RGBA")
+        return {
+            symbol: strip.crop((index * SVG_RENDER_SIZE, 0, (index + 1) * SVG_RENDER_SIZE, SVG_RENDER_SIZE))
+            for index, symbol in enumerate(PIECE_SYMBOLS)
+        }
+
+
 def download_chesscom_pieces(piece_set: str) -> dict[str, Image.Image]:
     pieces = {}
-    for symbol in "PNBRQKpnbrqk":
+    for symbol in PIECE_SYMBOLS:
         url = CHESSCOM_PIECE_URL.format(piece_set=piece_set, color="w" if symbol.isupper() else "b", piece=symbol.lower())
-        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(request) as response:
-            pieces[symbol] = Image.open(io.BytesIO(response.read())).convert("RGBA")
+        pieces[symbol] = Image.open(io.BytesIO(download_bytes(url))).convert("RGBA")
     return pieces
 
 
@@ -118,6 +177,12 @@ def main() -> None:
         "chesscom_neo.json",
         "Chess.com Neo",
         templates_from_start_boards([render_image_piece_board(neo_pieces, light, dark) for light, dark in BOARD_THEMES]),
+    )
+    lichess_pieces = download_lichess_pieces("cburnett")
+    save_piece_set(
+        "lichess_cburnett.json",
+        "Lichess cburnett",
+        templates_from_start_boards([render_image_piece_board(lichess_pieces, light, dark) for light, dark in BOARD_THEMES]),
     )
     save_piece_set("nautilus.json", "NautilusChess", templates_from_start_boards([render_nautilus_board()]))
 

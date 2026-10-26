@@ -13,7 +13,7 @@ Program tidak pernah mengklik atau menjalankan bidak. Semua langkah tetap kamu y
 - **Tembus klik.** Saat terkunci, semua klik dan drag diteruskan ke papan di bawahnya.
 - **Tidak ikut ter-capture.** Panah overlay tidak terbaca sebagai bagian dari papan.
 - **Pengenalan bidak.** Rupa ke-12 jenis bidak direkam dari papan yang sedang dipakai, jadi tetap jalan dengan tema papan dan set bidak apa pun.
-- **Rekaman bawaan.** Set bidak **Chess.com Neo** dan **NautilusChess** langsung dikenali, termasuk saat overlay pertama kali dibuka di tengah game. Warna papannya bebas.
+- **Rekaman bawaan.** Set bidak **Chess.com Neo**, **Lichess cburnett**, dan **NautilusChess** langsung dikenali, termasuk saat overlay pertama kali dibuka di tengah game. Warna papannya bebas.
 - **Rekam otomatis.** Untuk set bidak lain, bidak direkam begitu posisi awal terlihat, cukup sekali per set.
 - **Arah papan otomatis.** Putih atau Hitam di bawah dikenali dari letak pion, kapan saja.
 - **Membaca langkah kedua pihak**, termasuk langkah bot, rokade, en passant, dan promosi ke bidak apa pun. Highlight, titik langkah, dan bidak yang sedang dipilih tidak mengganggu.
@@ -56,7 +56,7 @@ python main.py
 1. **Buka papan catur** dan pastikan papannya terlihat penuh, tidak tertutup jendela lain.
 2. **Atur kotak.** Di **Mode atur kotak**, geser kotak biru dengan klik-tahan di dalamnya. Ubah ukurannya dengan menarik kotak kecil di pojok kanan bawah, atau pakai tombol **Perbesar/Perkecil**. Garis 8×8 harus pas dengan petak papan.
 3. Pastikan **Cara baca** = **Semua papan (perubahan petak)**, lalu tekan **Mulai**. Kotak otomatis terkunci dan tembus klik.
-4. **Main seperti biasa.** Untuk set bidak Chess.com Neo dan NautilusChess, posisi langsung terbaca walaupun game sudah berjalan, dan status menampilkan set yang dipakai, misalnya *"Posisi dibaca dari layar (Chess.com Neo)"*. Untuk set bidak lain, mulai dari posisi awal sekali sampai status menampilkan *"bidak direkam otomatis"*. Setelah itu set tersebut juga bisa dibuka di tengah game.
+4. **Main seperti biasa.** Untuk set bidak Chess.com Neo, Lichess cburnett, dan NautilusChess, posisi langsung terbaca walaupun game sudah berjalan, dan status menampilkan set yang dipakai, misalnya *"Posisi dibaca dari layar (Chess.com Neo)"*. Untuk set bidak lain, mulai dari posisi awal sekali sampai status menampilkan *"bidak direkam otomatis"*. Setelah itu set tersebut juga bisa dibuka di tengah game.
 5. **Ikuti saran.** Panah **oranye** adalah saran untuk giliranmu. Panah **abu-abu** adalah perkiraan balasan lawan.
 
 Untuk game yang sudah berjalan, kalau bidak sudah pernah terekam, tekan **Baca posisi → Putih jalan** atau **Hitam jalan** sesuai giliran.
@@ -124,8 +124,8 @@ Program memilih set bidak yang paling cocok dengan layar: rekamanmu sendiri (`pi
 | `board_reader.py` | Capture layar, pemetaan petak, dan deteksi highlight (cara Nautilus) |
 | `square_change_detector.py` | Deteksi perubahan petak dan petak terisi |
 | `piece_recognizer.py` | Rekam dan kenali bidak, serta pilih set bidak yang cocok |
-| `piece_sets/` | Rekaman bawaan: Chess.com Neo dan NautilusChess |
-| `build_piece_sets.py` | Membuat ulang rekaman bawaan di `piece_sets/` |
+| `piece_sets/` | Rekaman bawaan: Chess.com Neo, Lichess cburnett, dan NautilusChess |
+| `build_piece_sets.py` | Membuat ulang rekaman bawaan di `piece_sets/` (butuh Chrome untuk bidak SVG Lichess) |
 | `game_tracker.py` | Posisi game dan pencarian langkah legal yang cocok |
 | `engine_advisor.py` | Menjalankan Stockfish atau Komodo dan memformat saran |
 | `site_profiles.py` | Membaca profil warna situs dari NautilusChess |
@@ -155,7 +155,7 @@ Untuk merekam ulang bidak dari awal, hapus `piece_templates.json`, lalu buka pap
 |---|---|
 | Tidak ada langkah yang terbaca sama sekali | Izin Screen Recording belum diberikan, atau **Cara baca** masih per situs. Ganti ke **Semua papan** |
 | Status *"belum ada highlight langkah"* | Kamu sedang memakai cara baca per situs. Ganti ke **Semua papan** |
-| Status *"Set bidak di layar belum dikenal"* | Set bidakmu bukan Neo atau Nautilus dan belum pernah terekam. Buka papan di posisi awal sekali |
+| Status *"Set bidak di layar belum dikenal"* | Set bidakmu bukan Neo, cburnett, atau Nautilus dan belum pernah terekam. Buka papan di posisi awal sekali |
 | Langkah salah atau tidak terbaca | Ada jendela lain yang menutupi papan, atau grid 8×8 tidak pas dengan petak |
 | Overlay tertutup jendela lain | Jalankan ulang program. Overlay berada di level jendela status macOS |
 | Panah tidak terlihat di screenshot | Normal. Overlay sengaja dikecualikan dari capture layar |
@@ -165,7 +165,7 @@ Untuk merekam ulang bidak dari awal, hapus `piece_templates.json`, lalu buka pap
 
 - Hak rokade dan en passant tidak terlihat di gambar. Saat posisi dibaca dari layar, hak rokade ditebak dari letak raja dan benteng.
 - Program hanya membaca apa yang terlihat. Papan yang tertutup sebagian, sedang dianimasikan, atau di-zoom tidak rata bisa salah terbaca.
-- Set bidak selain Chess.com Neo dan NautilusChess harus direkam sekali dari posisi awal sebelum bisa dibaca di tengah game.
+- Set bidak selain Chess.com Neo, Lichess cburnett, dan NautilusChess harus direkam sekali dari posisi awal sebelum bisa dibaca di tengah game.
 
 ## Dukungan platform
 
